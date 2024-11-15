@@ -4,13 +4,12 @@ const mimeType = "audio/webm";
 
 export const AudioRecorder = () => {
   const [permission, setPermission] = useState(false);
-  const [stream, setStream] = useState<MediaStream>();
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const [recordingStatus, setRecordingStatus] = useState("inactive");
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
-  const [audio, setAudio] = useState<string | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<"inactive" | "recording">("inactive");
+  const [recordedAudios, setRecordedAudios] = useState<string[]>([]); // Store multiple recordings
 
-  // function to get micro[phone permission]
+  // Function to get microphone permission
   const getMicrophonePermission = async () => {
     if ("MediaRecorder" in window) {
       try {
@@ -24,51 +23,41 @@ export const AudioRecorder = () => {
         alert(err);
       }
     } else {
-      alert("The mediaRecorder API is not supported in your browser");
+      alert("The MediaRecorder API is not supported in your browser");
     }
   };
 
-  // function to start audio recordig
-  const startRecording = async () => {
-    if (!stream) return; // Ensure the stream is available
+  // Start recording audio
+  const startRecording = () => {
+    if (!stream) return;
+
     setRecordingStatus("recording");
-
-    // create new media recorder instance using the stream
-    const media = new MediaRecorder(stream as MediaStream, { mimeType });
-    // set the media recorder instance of the mediaRecorder ref
-    mediaRecorder.current = media as MediaRecorder;
-
-    // invokes the start method to start the recording process
-    mediaRecorder.current.start();
+    const media = new MediaRecorder(stream, { mimeType });
+    mediaRecorder.current = media;
 
     let localAudioChunks: Blob[] = [];
-    // Event handler for data availability
-    mediaRecorder.current.ondataavailable = (e: BlobEvent) => {
-      if (e.data.size > 0) {
-        localAudioChunks.push(e.data);
+    mediaRecorder.current.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        localAudioChunks.push(event.data);
       }
     };
 
-    // Update state with audio chunks
-    setAudioChunks(localAudioChunks);
-  };
-  const stopRecording = () => {
-    if (!mediaRecorder.current) return; // Ensure the mediaRecorder instance is available
-
-    setRecordingStatus("inactive");
-    //stops the recording instance
-    mediaRecorder?.current.stop();
     mediaRecorder.current.onstop = () => {
-      //creates a blob file from the audiochunks data
-      const audioBlob = new Blob(audioChunks, { type: mimeType });
-      //creates a playable URL from the blob file.
+      const audioBlob = new Blob(localAudioChunks, { type: mimeType });
       const audioUrl = URL.createObjectURL(audioBlob);
-      setAudio(audioUrl);
-      setAudioChunks([]);
+      setRecordedAudios((prev) => [...prev, audioUrl]); // Add new audio to list
     };
+
+    mediaRecorder.current.start();
   };
 
-  console.log("audio : ", audioChunks);
+  // Stop recording audio
+  const stopRecording = () => {
+    if (mediaRecorder.current && recordingStatus === "recording") {
+      setRecordingStatus("inactive");
+      mediaRecorder.current.stop();
+    }
+  };
 
   return (
     <div>
@@ -90,15 +79,18 @@ export const AudioRecorder = () => {
               Stop Recording
             </button>
           ) : null}
+        </div>
 
-          {audio ? (
-            <div className="audio-container">
+        {/* List all recorded audio clips */}
+        <div className="recorded-audios">
+          {recordedAudios.map((audio, index) => (
+            <div key={index} className="audio-container">
               <audio src={audio} controls></audio>
-              <a download href={audio}>
-                Download Recording
+              <a download={`recording-${index + 1}.webm`} href={audio}>
+                Download Recording {index + 1}
               </a>
             </div>
-          ) : null}
+          ))}
         </div>
       </main>
     </div>
